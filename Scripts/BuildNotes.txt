@@ -1,0 +1,224 @@
+This upgrade version for EPST 1.3 is based on using Yara 3.11.0 and libcurl 7.70
+
+Keeping the older Docker images so need a better naming convention for different base libs used to
+build new versions of EPST.
+
+docker containers ls -a
+  - show list of all containers with names given
+
+docker images -a
+  - show list of all base images used to construct the containers
+  
+For this upgrade, keep the same base OS like Alpine 3.7 instead of upgrading to newest version.
+Not really sure how the binary backward compatiblity works in Linux - forward should be okay.
+
+Naming Convention For Containers
+================================
+
+Example using Alpine OS version 3.7 for EndpointScanner version 1.3:
+
+docker run --name alpine37_epst13 -v /[DevPath]/linux/epst:/src -t -i alpine:3.7 sh
+
+Assume major upgrades of yara will include an increase in epst version number. For minor upgrades of Yara or
+libcurl, update the libraries in place. These updates replace the system level lib/includes. If they need to be
+backed out, will need to refresh the container from scratch.
+
+Currently only using three basic OS containers:
+  - Alpine 3.7
+  - Centos 6
+  - Ubuntu 14.04  - using musl build
+
+BUILD BINARIES
+==============
+
+This is after all the setup done below. Ensure to make a subdir called test.
+
+cd /[DevPath]/linux/epst
+
+./build.mac
+
+docker ps -a
+
+docker start -ai alpine37_epst13
+cd /src
+./build.alpine
+cd test
+./E*64.run -h
+
+docker start -ai ubuntu14_epst13
+cd /src
+./build.musl
+cd test
+./E*Ubuntu.run -h
+
+docker start -ai centos6_epst13
+cd /src
+./build.centos
+cd test
+./E*Centos.run -h
+
+
+Alpine Setup
+============
+
+docker run --name alpine37_epst13 -v /[DevPath]/epst:/src -t -i alpine:3.7 sh
+
+apk update
+apk add --no-cache binutils cmake make libgcc musl-dev gcc vim perl libtool automake autoconf
+cd /home
+wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz
+tar -zxf openssl-1.1.1g.tar.gz
+
+# cd into crpyto and edit mem_sec.c and delete the <linux/mman.h> line
+cd openssl-1.1.1g/crypto
+
+cd ..
+./config -static -static-libgcc --prefix=/usr/local/openssl --openssldir=/usr/local/openssl no-shared no-afalgeng no-async
+make
+make install
+
+cd /home
+wget https://github.com/VirusTotal/yara/archive/v3.11.0.tar.gz
+tar -zxf v3.11.0.tar.gz
+cd yara-3.11.0
+
+./bootstrap.sh
+
+./configure CFLAGS="-static -static-libgcc -I/usr/local/openssl/include -L/usr/local/openssl/lib" --enable-shared=no
+
+make
+make install
+cd /home
+
+wget https://curl.haxx.se/download/curl-7.70.0.tar.gz
+tar -zxf curl-7.70.0.tar.gz
+cd curl-7.70.0
+
+./configure --without-libidn2 --without-zlib --disable-ldap --enable-static --disable-shared --with-ssl="/usr/local/openssl"
+make
+make install
+
+cd /src
+./build.alpine
+
+
+CentOS Setup
+============
+
+docker run --name centos6_epst13 -v /[DevPath]/epst:/src -t -i centos:6 /bin/bash
+
+
+yum -y update
+
+# Most likely overkill but...
+yum groupinstall "Development Tools"
+
+yum -y install wget
+
+yum -y install glibc-static
+
+cd /home
+
+wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz
+
+tar -zxf openssl-1.1.1g.tar.gz
+
+# cd into crpyto and edit mem_sec.c and delete the <linux/mman.h> line
+cd openssl-1.1.1g/crypto
+
+cd ..
+
+./config -static -static-libgcc --prefix=/usr/local/openssl --openssldir=/usr/local/openssl no-shared no-afalgeng no-async
+make
+make install
+
+
+cd /home
+
+wget https://github.com/VirusTotal/yara/archive/v3.11.0.tar.gz
+
+tar -zxf v3.11.0.tar.gz
+cd yara-3.11.0
+
+./bootstrap.sh
+
+./configure CFLAGS="-static -static-libgcc -I/usr/local/openssl/include -L/usr/local/openssl/lib" --enable-shared=no
+make
+make install
+
+# Note various link errors for yara and yarac related to dynamic linking - ignore
+
+cd /home
+
+wget https://curl.haxx.se/download/curl-7.70.0.tar.gz
+tar -zxf curl-7.70.0.tar.gz
+cd curl-7.70.0
+
+./configure --without-libidn2 --without-zlib --disable-ldap --enable-static --disable-shared --with-ssl="/usr/local/openssl"
+make
+make install
+
+cd /src
+./build.centos
+cd test
+
+
+Ubuntu Setup
+============
+
+docker run --name ubuntu14_epst13 -v /[DevPath]/epst:/src -t -i ubuntu:14.04 /bin/bash
+
+apt-get update
+apt-get -y install gcc automake libtool make wget build-essential gdb musl-tools vim
+
+
+cd /home
+
+#### Build the OPENSSL libs and install includes
+#### https://wiki.openssl.org/index.php/Compilation_and_Installation#Retrieve_source_code
+#### NOTE: https://github.com/openssl/openssl/issues/7207
+
+wget https://www.openssl.org/source/openssl-1.1.1g.tar.gz
+
+tar -zxf openssl-1.1.1g.tar.gz
+
+# cd into crpyto and edit mem_sec.c and delete the <linix/mman.h> line
+cd openssl-1.1.1g/crypto
+cd ..
+CC=musl-gcc ./config --prefix=/usr/local/openssl --openssldir=/usr/local/openssl no-shared no-afalgeng no-async
+make
+make install
+
+cd /home
+
+wget https://github.com/VirusTotal/yara/archive/v3.11.0.tar.gz
+tar -zxf v3.11.0.tar.gz
+cd yara-3.11.0
+
+./bootstrap.sh
+
+CC=musl-gcc ./configure CFLAGS="-I/usr/local/openssl/include -L/usr/local/openssl/lib" --enable-shared=no
+make
+make install
+
+
+cd /home
+
+wget https://curl.haxx.se/download/curl-7.70.0.tar.gz
+tar -zxf curl-7.70.0.tar.gz
+cd curl-7.70.0
+
+CC=musl-gcc ./configure --without-libidn2 --without-zlib --disable-ldap --enable-static --disable-shared --with-ssl="/usr/local/openssl"
+make
+make install
+
+
+# Build the EPST in src dir exposed from host to docker image
+cd /src
+mkdir test
+./build.musl
+cd test
+
+# Verify the compiled application is "not a dynamic executable"
+ldd EndpointScannerUbuntu.run
+
