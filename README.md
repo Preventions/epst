@@ -2,6 +2,8 @@
 
 The Endpoint Scanning Tool is an application designed to analyze a computer system to determine if there any are any indications of malware infection. A collection of indicator signatures and sophisticated rules are utilized by the tool to identify suspicious files and flag them for remediation.
 
+This project is released open source under the terms of a research grant from DRDC Canada as part of the <a href=http://www.science.gc.ca/eic/site/063.nsf/eng/h_5B5BE154.html>CSSP</a>.
+
 ## Tested on:
 - Windows 64 bit
 
